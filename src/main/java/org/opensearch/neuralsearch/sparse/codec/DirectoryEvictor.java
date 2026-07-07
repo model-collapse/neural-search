@@ -26,7 +26,7 @@ import java.util.Map;
  * is fixed at one cycle per {@link #EVICT_INTERVAL_SECONDS}, no matter how
  * many concurrent writers attach to the same directory.
  *
- * <h3>Lifecycle</h3>
+ * <h2>Lifecycle</h2>
  * <ol>
  *   <li>Writer calls {@link #attach(String)} when it starts a merge.</li>
  *   <li>If no evictor exists for that directory, one is created and its
@@ -37,7 +37,7 @@ import java.util.Map;
  *       the evictor is removed from the registry.</li>
  * </ol>
  *
- * <h3>File coverage</h3>
+ * <h2>File coverage</h2>
  * <p>Each cycle evicts page cache for all extensions in {@link #FILE_EXTENSIONS}
  * (the union of what either consumer needs). Evicting an extension that has no
  * matching files is a cheap no-op at the JNI layer.
