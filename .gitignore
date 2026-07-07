@@ -28,3 +28,6 @@ bin/
 
 # native JNI build product (rebuilt from neural-sparse-cpp via build-jni.sh)
 src/main/resources/native/
+
+# JNI build artifacts (abseil etc. fetched at build time; .so built from source)
+jni/third_party/
