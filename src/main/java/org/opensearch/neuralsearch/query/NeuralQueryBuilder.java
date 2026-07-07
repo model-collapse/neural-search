@@ -918,10 +918,18 @@ public class NeuralQueryBuilder extends AbstractNeuralQueryBuilder<NeuralQueryBu
             inferenceInput.put(INPUT_IMAGE, queryImage());
         }
 
+        log.info("Neural query rewrite: requesting text embedding from model [{}] for field [{}]", modelId(), fieldName());
+
         queryRewriteContext.registerAsyncAction(
             ((client, actionListener) -> ML_CLIENT.inferenceSentencesMap(
                 MapInferenceRequest.builder().modelId(modelId()).inputObjects(inferenceInput).embeddingContentType(QUERY).build(),
                 ActionListener.wrap(floatList -> {
+                    log.info(
+                        "Neural query rewrite: received embedding with [{}] dimensions from model [{}] for field [{}]",
+                        floatList.size(),
+                        modelId(),
+                        fieldName()
+                    );
                     vectorSetOnce.set(vectorAsListToArray(floatList));
                     actionListener.onResponse(null);
                 }, actionListener::onFailure)

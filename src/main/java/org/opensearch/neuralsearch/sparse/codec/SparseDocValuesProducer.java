@@ -5,6 +5,7 @@
 package org.opensearch.neuralsearch.sparse.codec;
 
 import lombok.Getter;
+import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.codecs.DocValuesProducer;
 import org.apache.lucene.index.BinaryDocValues;
 import org.apache.lucene.index.DocValuesSkipper;
@@ -14,6 +15,7 @@ import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SortedDocValues;
 import org.apache.lucene.index.SortedNumericDocValues;
 import org.apache.lucene.index.SortedSetDocValues;
+import org.opensearch.neuralsearch.sparse.mapper.SparseVectorField;
 
 import java.io.IOException;
 
@@ -21,6 +23,7 @@ import java.io.IOException;
  * DocValues producer for sparse vector fields that wraps a delegate producer
  * and provides sparse-specific binary doc values handling.
  */
+@Log4j2
 public class SparseDocValuesProducer extends DocValuesProducer {
     private final DocValuesProducer delegate;
     @Getter
@@ -79,5 +82,10 @@ public class SparseDocValuesProducer extends DocValuesProducer {
     @Override
     public void close() throws IOException {
         this.delegate.close();
+        for (FieldInfo fieldInfo : state.fieldInfos) {
+            if (SparseVectorField.isSparseField(fieldInfo) && NativeIndexManager.isCppNativeEngine(fieldInfo)) {
+                NativeIndexManager.getInstance().releaseIndex(state.segmentInfo, fieldInfo);
+            }
+        }
     }
 }

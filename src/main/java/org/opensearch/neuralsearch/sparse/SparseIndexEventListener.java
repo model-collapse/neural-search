@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.apache.lucene.index.SegmentInfo;
 import org.apache.lucene.index.SegmentInfos;
+import org.apache.lucene.store.Directory;
 import org.opensearch.common.concurrent.GatedCloseable;
 import org.opensearch.index.IndexService;
 import org.opensearch.index.mapper.MappedFieldType;
@@ -18,26 +19,27 @@ import org.opensearch.indices.cluster.IndicesClusterStateService;
 import org.opensearch.neuralsearch.sparse.cache.ClusteredPostingCache;
 import org.opensearch.neuralsearch.sparse.cache.CacheKey;
 import org.opensearch.neuralsearch.sparse.cache.ForwardIndexCache;
+import org.opensearch.neuralsearch.sparse.codec.NativeIndexManager;
 import org.opensearch.neuralsearch.sparse.mapper.SparseVectorFieldType;
 
 /**
  * Event listener for sparse index operations that handles cache cleanup during index removal.
- * Clears forward index and clustered posting caches for sparse token fields when indices are removed.
+ * Clears forward index, clustered posting caches, and native index files for sparse token fields when indices are removed.
  */
 @AllArgsConstructor
 @Log4j2
 public class SparseIndexEventListener implements IndexEventListener {
     @Override
-    /**
-     * This function is used to remove data from cache when index is removed.
-     * The parameter reason is not used, because all kinds of its enum will have to go through this cache removing procedure.
-     * @param indexService The index service for the removed index
-     * @param reason The reason for the index removal
-     */
     public void beforeIndexRemoved(IndexService indexService, IndicesClusterStateService.AllocatedIndices.IndexRemovalReason reason) {
+        boolean isActualDeletion = reason == IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.DELETED
+            || reason == IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.FAILURE;
+
         for (IndexShard shard : indexService) {
             try (GatedCloseable<SegmentInfos> snapshot = shard.getSegmentInfosSnapshot()) {
                 MapperService mapperService = shard.mapperService();
+                if (mapperService == null) {
+                    continue;
+                }
                 SegmentInfos segmentInfos = snapshot.get();
                 for (int i = 0; i < segmentInfos.size(); i++) {
                     SegmentInfo segmentInfo = segmentInfos.info(i).info;
@@ -50,9 +52,16 @@ public class SparseIndexEventListener implements IndexEventListener {
                         }
                     }
                 }
+
+                if (isActualDeletion) {
+                    Directory directory = shard.store().directory();
+                    NativeIndexManager.getInstance().deleteAllNativeFiles(directory);
+                } else {
+                    log.info("Index removal reason [{}] — releasing native memory but preserving files on disk", reason);
+                    NativeIndexManager.getInstance().releaseAllIndexes();
+                }
             } catch (Exception e) {
                 log.error("An error occurred during remove index from cache", e);
-                throw new RuntimeException(e);
             }
         }
     }

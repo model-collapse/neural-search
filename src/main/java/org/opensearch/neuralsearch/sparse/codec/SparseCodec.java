@@ -8,14 +8,15 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.DocValuesFormat;
 import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.PostingsFormat;
-import org.apache.lucene.backward_codecs.lucene101.Lucene101Codec;
+import org.apache.lucene.codecs.StoredFieldsFormat;
+import org.apache.lucene.codecs.lucene104.Lucene104Codec;
 
 /**
  * SparseCodec is used to encode and decode sparse vector related data structures.
  */
 public class SparseCodec extends FilterCodec {
     private static final String NAME = "Sparse10010Codec";
-    public static final Codec DEFAULT_DELEGATE = new Lucene101Codec();
+    public static final Codec DEFAULT_DELEGATE = new Lucene104Codec();
 
     public SparseCodec() {
         this(DEFAULT_DELEGATE);
@@ -34,6 +35,11 @@ public class SparseCodec extends FilterCodec {
     @Override
     public DocValuesFormat docValuesFormat() {
         return new SparseDocValuesFormat(delegate.docValuesFormat());
+    }
+
+    @Override
+    public StoredFieldsFormat storedFieldsFormat() {
+        return new SparseStoredFieldsFormat(delegate.storedFieldsFormat());
     }
 
     @Override

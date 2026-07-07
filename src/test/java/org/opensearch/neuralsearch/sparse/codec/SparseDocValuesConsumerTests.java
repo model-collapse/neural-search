@@ -322,7 +322,8 @@ public class SparseDocValuesConsumerTests extends AbstractSparseTestBase {
         when(mergeFieldInfos.iterator()).thenThrow(new RuntimeException("Test exception"));
         mergeState.mergeFieldInfos = mergeFieldInfos;
 
-        // Should not throw exception, just log error
+        // The throwing iterator is on mergeState.mergeFieldInfos which is not used by the code
+        // (code uses mergeStateFacade.getMergeFieldInfos() instead), so no exception is thrown here
         sparseDocValuesConsumer.merge(mergeState);
 
         verify(delegate, times(1)).merge(mergeState);

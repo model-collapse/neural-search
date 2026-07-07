@@ -55,6 +55,7 @@ public class SparseVectorQuery extends Query {
     @NonNull
     private final Query fallbackQuery;
     private final Query filter;
+    private final Map<String, Float> rawQueryTokens;
     private Map<Object, BitSet> filterResults;
 
     @Override

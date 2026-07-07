@@ -32,6 +32,10 @@ import static org.opensearch.neuralsearch.sparse.common.SparseConstants.CLUSTER_
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.N_POSTINGS_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.QUANTIZATION_CEILING_INGEST_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.QUANTIZATION_CEILING_SEARCH_FIELD;
+import static org.opensearch.neuralsearch.sparse.common.SparseConstants.DEFAULT_ENGINE;
+import static org.opensearch.neuralsearch.sparse.common.SparseConstants.ENGINE_CPP_NATIVE;
+import static org.opensearch.neuralsearch.sparse.common.SparseConstants.ENGINE_FIELD;
+import static org.opensearch.neuralsearch.sparse.common.SparseConstants.ENGINE_JAVA_LEGACY;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.SEISMIC;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.SUMMARY_PRUNE_RATIO_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.Seismic.DEFAULT_APPROXIMATE_THRESHOLD;
@@ -143,6 +147,8 @@ public class SparseVectorFieldMapper extends ParametrizedFieldMapper {
             );
         }
 
+        boolean skipFeatureFields = ENGINE_CPP_NATIVE.equals(this.fieldType.getAttributes().get(ENGINE_FIELD));
+
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream(); DataOutputStream dos = new DataOutputStream(baos)) {
             String feature = "";
             for (XContentParser.Token token = context.parser().nextToken(); token != XContentParser.Token.END_OBJECT; token = context
@@ -153,20 +159,23 @@ public class SparseVectorFieldMapper extends ParametrizedFieldMapper {
                 } else if (token == XContentParser.Token.VALUE_NULL) {
                     // ignore feature, this is consistent with numeric fields
                 } else if (token == XContentParser.Token.VALUE_NUMBER || token == XContentParser.Token.VALUE_STRING) {
-                    final String key = name() + "." + feature;
                     float value = context.parser().floatValue(true);
-                    if (context.doc().getByKey(key) != null) {
-                        throw new IllegalArgumentException(
-                            "["
-                                + CONTENT_TYPE
-                                + "] fields do not support indexing multiple values for the same "
-                                + "key ["
-                                + key
-                                + "] in the same document"
-                        );
+
+                    if (skipFeatureFields == false) {
+                        final String key = name() + "." + feature;
+                        if (context.doc().getByKey(key) != null) {
+                            throw new IllegalArgumentException(
+                                "["
+                                    + CONTENT_TYPE
+                                    + "] fields do not support indexing multiple values for the same "
+                                    + "key ["
+                                    + key
+                                    + "] in the same document"
+                            );
+                        }
+                        FeatureField featureField = new FeatureField(name(), feature, value);
+                        context.doc().addWithKey(key, featureField);
                     }
-                    FeatureField featureField = new FeatureField(name(), feature, value);
-                    context.doc().addWithKey(key, featureField);
 
                     try {
                         int tokenIndex = Integer.parseInt(feature);
@@ -195,6 +204,9 @@ public class SparseVectorFieldMapper extends ParametrizedFieldMapper {
 
     private void setFieldTypeAttributes(FieldType fieldType, SparseMethodContext sparseMethodContext) {
         if (sparseMethodContext.getName().equals(SEISMIC)) {
+            String engine = (String) sparseMethodContext.getMethodComponentContext().getParameter(ENGINE_FIELD, DEFAULT_ENGINE);
+            fieldType.putAttribute(ENGINE_FIELD, engine);
+
             Integer nPostings = (Integer) sparseMethodContext.getMethodComponentContext()
                 .getParameter(N_POSTINGS_FIELD, DEFAULT_N_POSTINGS);
             Float clusterRatio = sparseMethodContext.getMethodComponentContext()
@@ -213,6 +225,11 @@ public class SparseVectorFieldMapper extends ParametrizedFieldMapper {
             fieldType.putAttribute(APPROXIMATE_THRESHOLD_FIELD, String.valueOf(algoTriggerThreshold));
             fieldType.putAttribute(QUANTIZATION_CEILING_INGEST_FIELD, String.valueOf(quantizationCeilIngest));
             fieldType.putAttribute(QUANTIZATION_CEILING_SEARCH_FIELD, String.valueOf(quantizationCeilSearch));
+
+            String quantization = (String) sparseMethodContext.getMethodComponentContext().getParameter("quantization", null);
+            if (quantization != null) {
+                fieldType.putAttribute("quantization", quantization);
+            }
         }
     }
 
@@ -250,6 +267,18 @@ public class SparseVectorFieldMapper extends ParametrizedFieldMapper {
             }
             if (!SparseAlgoType.SEISMIC.getName().equals(context.getName())) {
                 throw new MapperParsingException("[method.name]: " + context.getName() + " is not supported");
+            }
+            String engine = (String) context.getMethodComponentContext().getParameter(ENGINE_FIELD, DEFAULT_ENGINE);
+            if (!ENGINE_JAVA_LEGACY.equals(engine) && !ENGINE_CPP_NATIVE.equals(engine)) {
+                throw new MapperParsingException(
+                    "[method.parameters.engine]: "
+                        + engine
+                        + " is not supported. Use '"
+                        + ENGINE_JAVA_LEGACY
+                        + "' or '"
+                        + ENGINE_CPP_NATIVE
+                        + "'"
+                );
             }
             ValidationException exception = SparseAlgoType.SEISMIC.validateMethod(context);
             if (exception != null) {

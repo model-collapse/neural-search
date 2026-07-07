@@ -22,6 +22,7 @@ import static org.opensearch.neuralsearch.sparse.common.SparseConstants.QUANTIZA
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.QUANTIZATION_CEILING_SEARCH_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.SUMMARY_PRUNE_RATIO_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.CLUSTER_RATIO_FIELD;
+import static org.opensearch.neuralsearch.sparse.common.SparseConstants.ENGINE_FIELD;
 import static org.opensearch.neuralsearch.sparse.common.SparseConstants.N_POSTINGS_FIELD;
 
 /**
@@ -147,6 +148,8 @@ public class Seismic implements SparseAlgorithm {
             }
             parameters.remove(QUANTIZATION_CEILING_SEARCH_FIELD);
         }
+        parameters.remove(ENGINE_FIELD);
+        parameters.remove("quantization");
         for (String key : parameters.keySet()) {
             errorMessages.add(String.format(Locale.ROOT, "Unknown parameter '%s' found", key));
         }

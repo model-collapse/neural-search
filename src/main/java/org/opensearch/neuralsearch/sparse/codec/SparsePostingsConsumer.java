@@ -159,7 +159,8 @@ public class SparsePostingsConsumer extends FieldsConsumer {
         for (String field : fields) {
             FieldInfo fieldInfo = this.state.fieldInfos.fieldInfo(field);
             if (SparseVectorField.isSparseField(fieldInfo)
-                && PredicateUtils.shouldRunSeisPredicate.test(this.state.segmentInfo, fieldInfo)) {
+                && PredicateUtils.shouldRunSeisPredicate.test(this.state.segmentInfo, fieldInfo)
+                && !NativeIndexManager.isCppNativeEngine(fieldInfo)) {
                 sparseFields.add(field);
             } else {
                 nonSparseFields.add(field);

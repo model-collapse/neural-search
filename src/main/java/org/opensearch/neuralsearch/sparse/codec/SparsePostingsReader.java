@@ -54,7 +54,8 @@ public class SparsePostingsReader {
         List<FieldInfo> sparseFieldInfos = new ArrayList<>();
         for (FieldInfo fieldInfo : mergeStateFacade.getMergeFieldInfos()) {
             if (SparseVectorField.isSparseField(fieldInfo)
-                && PredicateUtils.shouldRunSeisPredicate.test(mergeStateFacade.getSegmentInfo(), fieldInfo)) {
+                && PredicateUtils.shouldRunSeisPredicate.test(mergeStateFacade.getSegmentInfo(), fieldInfo)
+                && !NativeIndexManager.isCppNativeEngine(fieldInfo)) {
                 sparseFieldInfos.add(fieldInfo);
             }
         }

@@ -720,3 +720,39 @@ task listRemoteModels(type: Exec) {
     def runScript = file("src/test/resources/remote-models/torchserve/scripts/run.sh")
     commandLine runScript.absolutePath, "list-models"
 }
+
+task buildNativeLib(type: Exec) {
+    group = "Build"
+    description = "Build nsparse JNI native library from neural-sparse-cpp"
+    commandLine 'bash', "${projectDir}/build-jni.sh"
+    onlyIf { project.hasProperty('buildNative') }
+}
+
+processResources {
+    if (project.hasProperty('buildNative')) {
+        dependsOn buildNativeLib
+    }
+}
+
+task prepareDeploy(type: Copy) {
+    group = "Deploy"
+    description = "Collect neural-search plugin ZIP and all dependency plugin ZIPs into build/deploy/plugins/"
+    dependsOn bundlePlugin
+
+    def deployDir = "${buildDir}/deploy/plugins"
+
+    from(bundlePlugin.archiveFile) {
+        rename { "opensearch-neural-search.zip" }
+    }
+    from(configurations.zipArchive.files)
+    into deployDir
+
+    doFirst {
+        delete deployDir
+    }
+
+    doLast {
+        println "Deploy artifacts collected in ${deployDir}:"
+        fileTree(deployDir).each { println "  ${it.name}" }
+    }
+}

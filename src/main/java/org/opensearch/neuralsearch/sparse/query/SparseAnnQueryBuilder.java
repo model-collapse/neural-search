@@ -261,6 +261,7 @@ public class SparseAnnQueryBuilder extends AbstractQueryBuilder<SparseAnnQueryBu
         return new SparseVectorQuery.SparseVectorQueryBuilder().fieldName(fieldName)
             .queryContext(sparseQueryContext)
             .queryVector(new SparseVector(integerTokens, new ByteQuantizer(quantizationCeilSearch)))
+            .rawQueryTokens(queryTokens)
             .fallbackQuery(fallbackQuery)
             .filter(filterQuery)
             .build();

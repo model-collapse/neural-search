@@ -16,6 +16,10 @@ public final class SparseConstants {
     public static final String QUANTIZATION_CEILING_INGEST_FIELD = "quantization_ceiling_ingest";
     public static final String QUANTIZATION_CEILING_SEARCH_FIELD = "quantization_ceiling_search";
     public static final String SEISMIC = "seismic";
+    public static final String ENGINE_FIELD = "engine";
+    public static final String ENGINE_CPP_NATIVE = "cpp-native";
+    public static final String ENGINE_JAVA_LEGACY = "java-legacy";
+    public static final String DEFAULT_ENGINE = ENGINE_JAVA_LEGACY;
     public static final String CLUSTER_RATIO_FIELD = "cluster_ratio";
     public static final String APPROXIMATE_THRESHOLD_FIELD = "approximate_threshold";
     public static final String THREAD_POOL_NAME = "seismic_thread_pool";

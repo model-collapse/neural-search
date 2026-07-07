@@ -21,6 +21,7 @@ import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.ScorerSupplier;
 import org.apache.lucene.search.Weight;
 import org.apache.lucene.search.similarities.Similarity;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.BitSet;
 import org.apache.lucene.util.BitSetIterator;
 import org.apache.lucene.util.Bits;
@@ -31,6 +32,7 @@ import org.opensearch.neuralsearch.sparse.cache.CacheGatedForwardIndexReader;
 import org.opensearch.neuralsearch.sparse.cache.CacheKey;
 import org.opensearch.neuralsearch.sparse.cache.ForwardIndexCache;
 import org.opensearch.neuralsearch.sparse.cache.ForwardIndexCacheItem;
+import org.opensearch.neuralsearch.sparse.codec.NativeIndexManager;
 import org.opensearch.neuralsearch.sparse.codec.SparseBinaryDocValuesPassThrough;
 import org.opensearch.neuralsearch.sparse.common.PredicateUtils;
 import org.opensearch.neuralsearch.sparse.quantization.ByteQuantizationUtil;
@@ -119,6 +121,10 @@ public class SparseQueryWeight extends Weight {
                         DocIdSetIterator iter = scorer.iterator();
                         int docId = iter.nextDoc();
                         while (docId != DocIdSetIterator.NO_MORE_DOCS) {
+                            if (acceptDocs != null && acceptDocs.get(docId) == false) {
+                                docId = iter.nextDoc();
+                                continue;
+                            }
                             collector.collect(docId);
                             docId = iter.nextDoc();
                         }
@@ -141,28 +147,71 @@ public class SparseQueryWeight extends Weight {
 
     @VisibleForTesting
     Scorer selectScorer(SparseVectorQuery query, LeafReaderContext context, SegmentInfo segmentInfo) throws IOException {
-        SparseVectorReader cacheGatedForwardIndexReader = SparseVectorReader.NOOP_READER;
         FieldInfo fieldInfo = context.reader().getFieldInfos().fieldInfo(query.getFieldName());
         float rescaledBoost = boost * ByteQuantizationUtil.getCeilingValueIngest(fieldInfo) * ByteQuantizationUtil.getCeilingValueSearch(
             fieldInfo
         ) / MAX_UNSIGNED_BYTE_VALUE / MAX_UNSIGNED_BYTE_VALUE;
+        Similarity.SimScorer simScorer = ByteQuantizationUtil.getSimScorer(rescaledBoost);
 
+        // Resolve filter before dispatching to native or java path
+        BitSet filterBitSet = null;
+        if (query.getFilterResults() != null) {
+            filterBitSet = query.getFilterResults().get(context.id());
+        }
+
+        // If filter cardinality <= k, use ExactMatchScorer regardless of engine
+        if (filterBitSet != null) {
+            int filterCardinality = filterBitSet.cardinality();
+            if (filterCardinality <= query.getQueryContext().getK()) {
+                SparseVectorReader cacheGatedForwardIndexReader = SparseVectorReader.NOOP_READER;
+                if (segmentInfo != null) {
+                    CacheKey key = new CacheKey(segmentInfo, query.getFieldName());
+                    ForwardIndexCacheItem cacheItem = forwardIndexCache.getOrCreate(key, segmentInfo.maxDoc());
+                    cacheGatedForwardIndexReader = getCacheGatedForwardIndexReader(cacheItem, context.reader(), query.getFieldName());
+                }
+                BitSetIterator filterBitIterator = new BitSetIterator(filterBitSet, filterCardinality);
+                return new ExactMatchScorer(filterBitIterator, query.getQueryVector(), cacheGatedForwardIndexReader, simScorer);
+            }
+        }
+
+        // Try native engine first
+        if (NativeIndexManager.isCppNativeEngine(fieldInfo) && segmentInfo != null) {
+            try {
+                Directory directory = Lucene.segmentReader(context.reader()).directory();
+                long nativePtr = NativeIndexManager.getInstance().loadOrGetIndex(segmentInfo, fieldInfo, directory);
+                if (nativePtr != 0) {
+                    boolean isSQ = "uint8".equals(fieldInfo.getAttribute("quantization"));
+                    float vmin = 0.0f;
+                    float vmax = ByteQuantizationUtil.getCeilingValueSearch(fieldInfo);
+                    Bits liveDocs = context.reader().getLiveDocs();
+                    return new NativeSparseScorer(
+                        nativePtr,
+                        query.getQueryContext(),
+                        query.getRawQueryTokens(),
+                        query.getQueryContext().getHeapFactor(),
+                        isSQ,
+                        vmin,
+                        vmax,
+                        liveDocs,
+                        filterBitSet,
+                        boost
+                    );
+                }
+            } catch (Exception e) {
+                log.warn("Failed to use native scorer for field [{}], falling back to Java engine", query.getFieldName(), e);
+            }
+        }
+
+        // Fall back to Java SEISMIC scorer
+        SparseVectorReader cacheGatedForwardIndexReader = SparseVectorReader.NOOP_READER;
         if (segmentInfo != null) {
             CacheKey key = new CacheKey(segmentInfo, query.getFieldName());
             ForwardIndexCacheItem cacheItem = forwardIndexCache.getOrCreate(key, segmentInfo.maxDoc());
             cacheGatedForwardIndexReader = getCacheGatedForwardIndexReader(cacheItem, context.reader(), query.getFieldName());
         }
-        Similarity.SimScorer simScorer = ByteQuantizationUtil.getSimScorer(rescaledBoost);
         BitSetIterator filterBitIterator = null;
-        if (query.getFilterResults() != null) {
-            BitSet filter = query.getFilterResults().get(context.id());
-            if (filter != null) {
-                int ord = filter.cardinality();
-                filterBitIterator = new BitSetIterator(filter, ord);
-                if (ord <= query.getQueryContext().getK()) {
-                    return new ExactMatchScorer(filterBitIterator, query.getQueryVector(), cacheGatedForwardIndexReader, simScorer);
-                }
-            }
+        if (filterBitSet != null) {
+            filterBitIterator = new BitSetIterator(filterBitSet, filterBitSet.cardinality());
         }
         return new OrderedPostingWithClustersScorer(
             query.getFieldName(),
